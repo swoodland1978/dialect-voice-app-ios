@@ -32,16 +32,23 @@ object SharedApi {
 
     // The HttpClient (Ktor, engine picked per-platform - see PlatformHttpClient.kt) is built
     // entirely inside this module so no Ktor type ever has to cross the Kotlin/Swift
-    // boundary. idTokenProvider is expected to call whatever Firebase Auth wrapper the iOS
+    // boundary. idTokenProvider is expected to return whatever Firebase Auth wrapper the iOS
     // app ends up using - this module deliberately has no opinion on how a token is
     // obtained, only how it's used once it exists. See FirebaseCallableClient's own header.
-    fun makeChatApiClient(idTokenProvider: suspend () -> String?): ChatApiClient =
+    //
+    // Deliberately a plain `() -> String?`, not `suspend () -> String?`: Kotlin/Native
+    // exports a suspend function *type parameter* as a protocol Swift can't satisfy with a
+    // closure, so the Swift caller could never pass one. A non-suspend provider bridges
+    // cleanly from a Swift closure; the caller is expected to hand back an already-cached
+    // ID token (refreshed out of band - e.g. Firebase Auth's cached-token accessor after
+    // Sign in with Apple). FirebaseCallableClient keeps its suspend provider internally.
+    fun makeChatApiClient(idTokenProvider: () -> String?): ChatApiClient =
         ChatApiClient(
             FirebaseCallableClient(
                 createPlatformHttpClient(),
                 region = "us-central1",
                 projectId = "regional-dialect-ccd37",
-                idTokenProvider = idTokenProvider
+                idTokenProvider = { idTokenProvider() }
             )
         )
 }

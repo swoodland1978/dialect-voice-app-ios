@@ -1,12 +1,34 @@
 import SwiftUI
 
-// UNVERIFIED - see STATUS.md. No Xcode/Swift toolchain on this dev machine, so nothing in
-// iosApp/ has been compiled, only hand-written to the standard SwiftUI app-entry shape.
 @main
 struct WhyAIApp: App {
+    @StateObject private var auth = AuthController()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+                .environmentObject(auth)
+                .onAppear {
+                    // Screenshot/UI-test hook: skip the sign-in gate.
+                    if ProcessInfo.processInfo.environment["BYPASS_AUTH"] == "1" {
+                        auth.continueWithoutSignIn()
+                    }
+                }
+        }
+    }
+}
+
+// Sign-in gate: the whole app sits behind auth (usage/credit is per account), same as the
+// Android app. No anonymous fallback.
+struct RootView: View {
+    @EnvironmentObject var auth: AuthController
+
+    var body: some View {
+        switch auth.state {
+        case .signedIn:
+            ContentView(auth: auth)
+        case .signedOut, .signingIn:
+            SignInView()
         }
     }
 }
