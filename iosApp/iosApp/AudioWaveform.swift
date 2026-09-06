@@ -73,14 +73,17 @@ final class WaveformSampler: ObservableObject {
     }
 
     private func amplitude(at t: TimeInterval) -> Double {
-        let idlePulse = triangle(t, period: 2.2)
         let busyPulse = triangle(t, period: 0.42)
         let talkingPulse = 0.25 + 0.5 * triangle(t, period: 0.38)
         switch true {
         case inputs.isSpeaking:  return max(inputs.playbackAmplitude, talkingPulse)
         case inputs.isRecording: return inputs.recordingAmplitude
         case inputs.isBusy:      return busyPulse * 0.55
-        default:                 return idlePulse * 0.12
+        default:
+            // Idle: a calm breathing wave rather than a flat dotted line.
+            let swell = 0.11 + 0.06 * sin(t * 1.3)
+            let ripple = 0.04 * sin(t * 6.5)
+            return max(0.03, swell + ripple)
         }
     }
 

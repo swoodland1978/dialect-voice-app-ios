@@ -41,6 +41,31 @@ final class VoicePlayer: NSObject, ObservableObject {
         }
     }
 
+    /// Plays a bundled mp3 (preset greeting / switch / goodbye - no network, no credit).
+    func playBundle(_ resource: String, onFinish: @escaping () -> Void = {}) {
+        guard let url = Bundle.main.url(forResource: resource, withExtension: "mp3") else {
+            onFinish()
+            return
+        }
+        stop()
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+            try AVAudioSession.sharedInstance().setActive(true)
+            let p = try AVAudioPlayer(contentsOf: url)
+            p.isMeteringEnabled = true
+            p.delegate = self
+            guard p.play() else { onFinish(); return }
+            player = p
+            self.onFinish = onFinish
+            isPlaying = true
+            meterTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+                Task { @MainActor [weak self] in self?.sampleLevel() }
+            }
+        } catch {
+            onFinish()
+        }
+    }
+
     func stop() {
         meterTimer?.invalidate()
         meterTimer = nil

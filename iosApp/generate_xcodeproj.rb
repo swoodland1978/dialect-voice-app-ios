@@ -31,6 +31,11 @@ group.new_reference(File.join(src_dir, "Info.plist"))
 group.new_reference(File.join(src_dir, "iosApp.entitlements"))
 # Asset catalog -> resources build phase (add_resources detects .xcassets).
 target.add_resources([group.new_reference(File.join(src_dir, "Assets.xcassets"))])
+# Bundled preset audio (welcome / switch / goodbye greeting clips).
+audio_group = group.new_group("PresetAudio", "PresetAudio")
+Dir.glob(File.join(src_dir, "PresetAudio", "*.mp3")).sort.each do |f|
+  target.add_resources([audio_group.new_reference(f)])
+end
 
 # --- build settings (mirror project.yml) ------------------------------------
 common = {
@@ -43,7 +48,7 @@ common = {
   "GENERATE_INFOPLIST_FILE"      => "NO",
   "CODE_SIGNING_ALLOWED"         => "NO",   # simulator builds; flip on for device
   "CODE_SIGNING_REQUIRED"        => "NO",
-  "ASSETCATALOG_COMPILER_APPICON_NAME" => "",
+  "ASSETCATALOG_COMPILER_APPICON_NAME" => "AppIcon",
   # KMP shared framework wiring (standard JetBrains template)
   "FRAMEWORK_SEARCH_PATHS"       => '$(inherited) $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)',
   "OTHER_LDFLAGS"                => '$(inherited) -framework Shared',

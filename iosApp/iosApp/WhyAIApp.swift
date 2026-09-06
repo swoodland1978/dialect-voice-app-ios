@@ -3,18 +3,30 @@ import SwiftUI
 @main
 struct WhyAIApp: App {
     @StateObject private var auth = AuthController()
+    @State private var splashDone = false
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(auth)
-                .onAppear {
-                    // Screenshot/UI-test hook: skip the sign-in gate.
-                    if ProcessInfo.processInfo.environment["BYPASS_AUTH"] == "1" {
-                        auth.continueWithoutSignIn()
-                    }
+            Group {
+                if splashDone || skipSplash {
+                    RootView()
+                        .environmentObject(auth)
+                        .transition(.opacity)
+                } else {
+                    SplashView { withAnimation { splashDone = true } }
                 }
+            }
+            .onAppear {
+                // Screenshot/UI-test hook: skip the sign-in gate.
+                if ProcessInfo.processInfo.environment["BYPASS_AUTH"] == "1" {
+                    auth.continueWithoutSignIn()
+                }
+            }
         }
+    }
+
+    private var skipSplash: Bool {
+        ProcessInfo.processInfo.environment["BYPASS_AUTH"] == "1"
     }
 }
 

@@ -16,13 +16,22 @@ struct FirebaseConfig {
 
     var authDomain: String { "\(projectId).firebaseapp.com" }
 
+    // Firebase Web API key (public - it ships in every client, restricted server-side by
+    // Firebase rules / App Check). Paste the project's Web API Key here to enable auth
+    // without adding GoogleService-Info.plist. Leave empty to require the plist instead.
+    private static let devApiKey = ""
+    private static let devProjectId = "regional-dialect-ccd37"
+
     static let shared: FirebaseConfig? = {
-        guard
-            let url = Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist"),
-            let dict = NSDictionary(contentsOf: url),
-            let apiKey = dict["API_KEY"] as? String,
-            let projectId = dict["PROJECT_ID"] as? String
-        else { return nil }
-        return FirebaseConfig(apiKey: apiKey, projectId: projectId)
+        if let url = Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist"),
+           let dict = NSDictionary(contentsOf: url),
+           let apiKey = dict["API_KEY"] as? String,
+           let projectId = dict["PROJECT_ID"] as? String {
+            return FirebaseConfig(apiKey: apiKey, projectId: projectId)
+        }
+        if !devApiKey.isEmpty {
+            return FirebaseConfig(apiKey: devApiKey, projectId: devProjectId)
+        }
+        return nil
     }()
 }

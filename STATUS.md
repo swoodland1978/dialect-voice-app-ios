@@ -61,6 +61,26 @@ Builds clean, runs without crashing, mic button present. The full voice round-tr
 exercised headless (no simulator mic input; backend calls need the auth config above) - needs
 a device or completed Firebase/Apple setup to verify end to end.
 
+### Phase 2b: preset greeting audio + dev sign-in
+
+- `PresetAudio.swift` + `iosApp/iosApp/PresetAudio/*.mp3` (welcome / switch / goodbye clips
+  for the 5 enabled dialects, copied from the Android `res/raw/`). `VoicePlayer.playBundle`
+  plays them. `ChatViewModel`: welcome on launch, "you're listening to X now" on accent
+  switch (via `selectDialect`), goodbye before sign-out. Selected dialect persists in
+  `UserDefaults`. Not ported: the noCredit/easter-egg/random-egg clips (tied to the
+  credit/paywall system).
+- `AuthController.signInWithEmail` + a "Dev sign-in" disclosure on `SignInView`: email/
+  password against a Firebase test user via Identity Toolkit REST (`signInWithPassword`).
+  Needs no Apple Developer Program or provider config - just the Web API key in
+  `FirebaseConfig.devApiKey` (currently empty) and Email/Password enabled in Firebase. This
+  is the quick path to a real ID token for testing the AI + ElevenLabs backend on the sim.
+
+### Backend gap: iOS in-app purchase
+
+`functions/verifyPurchase.ts` only validates Google Play tokens (Android Publisher API).
+There is no App Store verification path, so an iOS purchase can't grant credit. Phase 3
+needs a new `verifyAppStorePurchase` Cloud Function + an App Store Connect product.
+
 **Sign in with Apple needs console config to actually authenticate** (only the user can do
 this): (1) add an iOS app in the Firebase console for `regional-dialect-ccd37`, bundle id
 `com.dialect.voice.ios`, download `GoogleService-Info.plist` into `iosApp/iosApp/`;

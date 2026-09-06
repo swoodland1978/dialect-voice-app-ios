@@ -49,7 +49,8 @@ struct ContentView: View {
 
                 DialectDropdown(
                     dialects: viewModel.dialects,
-                    selection: $viewModel.selectedDialect
+                    selected: viewModel.selectedDialect,
+                    onSelect: viewModel.selectDialect
                 )
 
                 Spacer().frame(height: 6)
@@ -70,7 +71,7 @@ struct ContentView: View {
                 .foregroundColor(Palette.primary)
             Spacer()
             Button {
-                auth.signOut()
+                viewModel.signOut { auth.signOut() }
             } label: {
                 Image(systemName: "rectangle.portrait.and.arrow.right")
                     .foregroundColor(Palette.onBackground)
@@ -158,13 +159,14 @@ private struct LastQuestionView: View {
 // description per row).
 private struct DialectDropdown: View {
     let dialects: [Dialect]
-    @Binding var selection: Dialect?
+    let selected: Dialect?
+    let onSelect: (Dialect) -> Void
 
     var body: some View {
         Menu {
             ForEach(dialects, id: \.id) { dialect in
                 Button {
-                    selection = dialect
+                    onSelect(dialect)
                 } label: {
                     Text(dialect.label)
                     Text(dialect.description_)
@@ -172,7 +174,7 @@ private struct DialectDropdown: View {
             }
         } label: {
             HStack(spacing: 4) {
-                Text(selection?.label ?? "Select")
+                Text(selected?.label ?? "Select")
                     .font(.subheadline.weight(.medium))
                 Image(systemName: "chevron.down").font(.caption2)
             }

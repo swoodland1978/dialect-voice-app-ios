@@ -34,13 +34,42 @@ final class ChatViewModel: ObservableObject {
         idTokenProvider: { [weak self] in self?.auth.currentIdToken }
     )
 
+    private let dialectDefaultsKey = "selected_dialect"
+
     init(auth: AuthController) {
         self.auth = auth
-        selectedDialect = dialects.first
+
+        let savedId = UserDefaults.standard.string(forKey: dialectDefaultsKey)
+        selectedDialect = dialects.first(where: { $0.id == savedId }) ?? dialects.first
 
         recorder.$amplitude.assign(to: &$recordingAmplitude)
         player.$amplitude.assign(to: &$playbackAmplitude)
         player.$isPlaying.assign(to: &$isSpeaking)
+
+        // Free, on-device greeting - never touches the paid TTS backend (Android does the
+        // same in ChatViewModel.init -> playPresetGreeting).
+        if let id = selectedDialect?.id, let clips = PresetAudio.byDialect[id] {
+            player.playBundle(clips.welcome)
+        }
+    }
+
+    /// Picks a dialect and speaks its "you're listening to X now" line (Android: setDialect).
+    func selectDialect(_ dialect: Dialect) {
+        guard dialect.id != selectedDialect?.id else { return }
+        selectedDialect = dialect
+        UserDefaults.standard.set(dialect.id, forKey: dialectDefaultsKey)
+        if let clips = PresetAudio.byDialect[dialect.id] {
+            player.playBundle(clips.switchTo)
+        }
+    }
+
+    /// Speaks the current dialect's goodbye line, then runs `completion` (Android: playGoodbye).
+    func signOut(then completion: @escaping () -> Void) {
+        guard let id = selectedDialect?.id, let clips = PresetAudio.byDialect[id] else {
+            completion()
+            return
+        }
+        player.playBundle(clips.goodbye, onFinish: completion)
     }
 
     /// Most recent question the user asked - the one bit of transcript the voice-only design

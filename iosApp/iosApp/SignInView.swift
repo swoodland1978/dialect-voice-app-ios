@@ -7,6 +7,9 @@ import AuthenticationServices
 struct SignInView: View {
     @EnvironmentObject var auth: AuthController
     @Environment(\.colorScheme) private var colorScheme
+    @State private var showDev = false
+    @State private var devEmail = ""
+    @State private var devPassword = ""
 
     var body: some View {
         ZStack {
@@ -48,13 +51,33 @@ struct SignInView: View {
 
                 Spacer().frame(height: 24)
 
-                // Dev bypass - remove once GoogleService-Info.plist + the Apple provider are
-                // configured. Lets the chat UI be exercised on the simulator meanwhile.
-                Button("Continue without signing in") {
-                    auth.continueWithoutSignIn()
+                // Dev sign-in - remove once Sign in with Apple + Firebase console config is
+                // done. Email/password against a Firebase test user gets a real ID token so
+                // the AI + voice backend can be tested on the simulator now.
+                DisclosureGroup("Dev sign-in", isExpanded: $showDev) {
+                    VStack(spacing: 8) {
+                        TextField("email", text: $devEmail)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .textFieldStyle(.roundedBorder)
+                        SecureField("password", text: $devPassword)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Sign in") {
+                            Task { await auth.signInWithEmail(devEmail, password: devPassword) }
+                        }
+                        .disabled(devEmail.isEmpty || devPassword.isEmpty || auth.state == .signingIn)
+
+                        Button("Continue without signing in") {
+                            auth.continueWithoutSignIn()
+                        }
+                        .font(.footnote)
+                        .foregroundColor(Palette.onSurfaceVariant)
+                    }
+                    .padding(.top, 8)
                 }
                 .font(.footnote)
                 .foregroundColor(Palette.onSurfaceVariant)
+                .padding(.horizontal, 48)
 
                 Spacer().frame(height: 24)
 
