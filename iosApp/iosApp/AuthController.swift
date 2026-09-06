@@ -75,6 +75,40 @@ final class AuthController: ObservableObject {
         state = .signedIn
     }
 
+    /// Anonymous Firebase sign-in (Identity Toolkit `signUp` with no credentials). Needs the
+    /// Anonymous provider enabled in the console. The backend's onUserCreate seeds a new
+    /// anonymous uid with the free trial credit, so this is enough to test AI + voice end to
+    /// end without any account. Not a production path (Android deliberately has no anon
+    /// fallback - see its AuthManager).
+    func signInAnonymously() async {
+        guard let config = FirebaseConfig.shared else {
+            errorMessage = "No Firebase config - set FirebaseConfig.devApiKey"
+            return
+        }
+        state = .signingIn
+        errorMessage = nil
+        var req = URLRequest(url: URL(string: "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=\(config.apiKey)")!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["returnSecureToken": true])
+        do {
+            let json = try await Self.postJSON(req)
+            if let id = json["idToken"] as? String {
+                currentIdToken = id
+                refreshToken = json["refreshToken"] as? String
+                let ttl = Double(json["expiresIn"] as? String ?? "3600") ?? 3600
+                expiresAt = Date().addingTimeInterval(ttl)
+                state = .signedIn
+            } else {
+                errorMessage = (json["error"] as? [String: Any])?["message"] as? String ?? "Sign-in failed"
+                state = .signedOut
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            state = .signedOut
+        }
+    }
+
     /// Dev/test sign-in with a Firebase email+password user (Identity Toolkit REST). Needs
     /// FirebaseConfig (API key) and the Email/Password provider enabled. Unlike Sign in with
     /// Apple this needs no Apple Developer Program / provider config, so it's the quickest way

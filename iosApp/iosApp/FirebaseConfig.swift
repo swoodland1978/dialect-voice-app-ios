@@ -19,6 +19,9 @@ struct FirebaseConfig {
     // Firebase Web API key (public - it ships in every client, restricted server-side by
     // Firebase rules / App Check). Paste the project's Web API Key here to enable auth
     // without adding GoogleService-Info.plist. Leave empty to require the plist instead.
+    // Fallback when GoogleService-Info.plist isn't in the bundle. Leave empty to require the
+    // plist. (Firebase Web API keys are public - they identify the project and are protected
+    // server-side by Security Rules / App Check, not by being hidden.)
     private static let devApiKey = ""
     private static let devProjectId = "regional-dialect-ccd37"
 

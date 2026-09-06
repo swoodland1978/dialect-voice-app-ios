@@ -9,3 +9,6 @@ iosApp/*.xcworkspace/
 
 .DS_Store
 local.properties
+
+# Firebase config - contains the project's Web API key; supply locally, not committed
+iosApp/iosApp/GoogleService-Info.plist

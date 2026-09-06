@@ -37,6 +37,11 @@ Dir.glob(File.join(src_dir, "PresetAudio", "*.mp3")).sort.each do |f|
   target.add_resources([audio_group.new_reference(f)])
 end
 
+# Firebase config, if present (gitignored - see FirebaseConfig.swift). Bundled as a resource
+# so Bundle.main can read it at runtime.
+gsi = File.join(src_dir, "GoogleService-Info.plist")
+target.add_resources([group.new_reference(gsi)]) if File.exist?(gsi)
+
 # --- build settings (mirror project.yml) ------------------------------------
 common = {
   "PRODUCT_BUNDLE_IDENTIFIER"    => "com.dialect.voice.ios",

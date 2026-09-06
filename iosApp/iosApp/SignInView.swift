@@ -55,14 +55,21 @@ struct SignInView: View {
                 // done. Email/password against a Firebase test user gets a real ID token so
                 // the AI + voice backend can be tested on the simulator now.
                 DisclosureGroup("Dev sign-in", isExpanded: $showDev) {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 10) {
+                        Button("Sign in anonymously") {
+                            Task { await auth.signInAnonymously() }
+                        }
+                        .disabled(auth.state == .signingIn)
+
+                        Divider()
+
                         TextField("email", text: $devEmail)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .textFieldStyle(.roundedBorder)
                         SecureField("password", text: $devPassword)
                             .textFieldStyle(.roundedBorder)
-                        Button("Sign in") {
+                        Button("Sign in with email") {
                             Task { await auth.signInWithEmail(devEmail, password: devPassword) }
                         }
                         .disabled(devEmail.isEmpty || devPassword.isEmpty || auth.state == .signingIn)
