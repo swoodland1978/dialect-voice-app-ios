@@ -17,8 +17,11 @@ struct WhyAIApp: App {
                 }
             }
             .onAppear {
-                // Screenshot/UI-test hook: skip the sign-in gate.
-                if ProcessInfo.processInfo.environment["BYPASS_AUTH"] == "1" {
+                // Screenshot/UI-test hooks.
+                let env = ProcessInfo.processInfo.environment
+                if env["AUTO_ANON"] == "1" {
+                    Task { await auth.signInAnonymously() }
+                } else if env["BYPASS_AUTH"] == "1" {
                     auth.continueWithoutSignIn()
                 }
             }
@@ -26,7 +29,8 @@ struct WhyAIApp: App {
     }
 
     private var skipSplash: Bool {
-        ProcessInfo.processInfo.environment["BYPASS_AUTH"] == "1"
+        let env = ProcessInfo.processInfo.environment
+        return env["BYPASS_AUTH"] == "1" || env["AUTO_ANON"] == "1"
     }
 }
 

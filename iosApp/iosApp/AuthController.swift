@@ -23,6 +23,7 @@ final class AuthController: ObservableObject {
     /// Firebase ID token if we have a valid one, else nil. Non-suspending on purpose - the
     /// shared module's provider closure is `() -> String?`; refresh happens out of band.
     private(set) var currentIdToken: String?
+    private(set) var userId: String?
 
     private var refreshToken: String?
     private var expiresAt: Date = .distantPast
@@ -95,6 +96,7 @@ final class AuthController: ObservableObject {
             let json = try await Self.postJSON(req)
             if let id = json["idToken"] as? String {
                 currentIdToken = id
+                userId = json["localId"] as? String ?? userId
                 refreshToken = json["refreshToken"] as? String
                 let ttl = Double(json["expiresIn"] as? String ?? "3600") ?? 3600
                 expiresAt = Date().addingTimeInterval(ttl)
@@ -130,6 +132,7 @@ final class AuthController: ObservableObject {
             let json = try await Self.postJSON(req)
             if let id = json["idToken"] as? String {
                 currentIdToken = id
+                userId = json["localId"] as? String ?? userId
                 refreshToken = json["refreshToken"] as? String
                 let ttl = Double(json["expiresIn"] as? String ?? "3600") ?? 3600
                 expiresAt = Date().addingTimeInterval(ttl)
@@ -146,6 +149,7 @@ final class AuthController: ObservableObject {
 
     func signOut() {
         currentIdToken = nil
+        userId = nil
         refreshToken = nil
         expiresAt = .distantPast
         displayName = nil
@@ -190,6 +194,7 @@ final class AuthController: ObservableObject {
             let json = try await Self.postJSON(req)
             if let id = json["idToken"] as? String {
                 currentIdToken = id
+                userId = json["localId"] as? String ?? userId
                 refreshToken = json["refreshToken"] as? String
                 let ttl = Double(json["expiresIn"] as? String ?? "3600") ?? 3600
                 expiresAt = Date().addingTimeInterval(ttl)

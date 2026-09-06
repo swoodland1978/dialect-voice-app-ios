@@ -12,6 +12,8 @@ struct ContentView: View {
         _viewModel = StateObject(wrappedValue: ChatViewModel(auth: auth))
     }
 
+    @State private var showBuyCreditNote = false
+
     var body: some View {
         ZStack {
             LinearGradient(
@@ -21,9 +23,19 @@ struct ContentView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                header
-
-                LastQuestionView(text: viewModel.lastQuestion)
+                VStack(spacing: 0) {
+                    header
+                    if let credit = viewModel.accountState.voiceCreditLabel {
+                        Text(credit)
+                            .font(.caption)
+                            .foregroundColor(Palette.onSurfaceVariant)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Palette.surfaceVariant, in: Capsule())
+                            .padding(.bottom, 8)
+                    }
+                    LastQuestionView(text: viewModel.lastQuestion)
+                }
 
                 AnimatedMascot(
                     isSpeaking: viewModel.isSpeaking,
@@ -62,11 +74,17 @@ struct ContentView: View {
                 inputRow
             }
         }
+        .task { await viewModel.refreshAccountState() }
+        .alert("Not available yet", isPresented: $showBuyCreditNote) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("In-app purchases aren't wired up on iOS yet - the backend only verifies Google Play purchases so far.")
+        }
     }
 
     private var header: some View {
         HStack {
-            Button("Buy credit") { }   // phase 3 (paywall) - present for layout parity
+            Button("Buy credit") { showBuyCreditNote = true }   // phase 3 - StoreKit not wired
                 .font(.callout)
                 .foregroundColor(Palette.primary)
             Spacer()

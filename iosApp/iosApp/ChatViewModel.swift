@@ -25,6 +25,7 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var isSpeaking: Bool = false
     @Published private(set) var playbackAmplitude: Double = 0
     @Published private(set) var recordingAmplitude: Double = 0
+    @Published private(set) var accountState: AccountState = .unknown
 
     private unowned let auth: AuthController
     private let recorder = VoiceRecorder()
@@ -79,6 +80,14 @@ final class ChatViewModel: ObservableObject {
     }
 
     var isThinking: Bool { isLoading || recordingState == .transcribing }
+
+    /// Pull the latest voice/text credit from Firestore (call on appear and after each turn).
+    func refreshAccountState() async {
+        guard let token = auth.currentIdToken, let uid = auth.userId else { return }
+        if let state = await UsageService.fetch(idToken: token, uid: uid) {
+            accountState = state
+        }
+    }
 
     // MARK: - Mascot tap: interrupt playback, else start/stop listening
 
@@ -167,6 +176,7 @@ final class ChatViewModel: ObservableObject {
                 ))
                 isLoading = false
                 await speak(replyText, dialect: dialect)
+                await refreshAccountState()
             } catch {
                 isLoading = false
                 lastError = error.localizedDescription
