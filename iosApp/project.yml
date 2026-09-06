@@ -1,0 +1,33 @@
+# XcodeGen spec (https://github.com/yonaskolb/XcodeGen) - generates iosApp.xcodeproj on
+# demand rather than this repo carrying a hand-authored .pbxproj, which is fragile to write
+# by hand and something this dev machine (no Xcode) has no way to verify at all. Once on a
+# machine with Xcode:
+#   brew install xcodegen
+#   cd iosApp && xcodegen generate
+#   open iosApp.xcodeproj
+name: iosApp
+options:
+  bundleIdPrefix: com.dialect.voice
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: iosApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dialect.voice.ios
+        INFOPLIST_FILE: iosApp/Info.plist
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+    # Builds the KMP shared module and embeds Shared.framework before compiling Swift -
+    # the standard JetBrains KMP+Xcode template pattern, no CocoaPods involved.
+    preBuildScripts:
+      - name: Build shared framework (KMP)
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :shared:embedAndSignAppleFrameworkForXcode
+        basedOnDependencyAnalysis: false
+    dependencies: []
