@@ -1,15 +1,19 @@
 import Foundation
+import Combine
+import AVFoundation
 import Shared
 
-// Phase 1: text chat + the visual shell (mascot / waveform). Voice recording, transcription
-// and TTS playback are phase 2 - the amplitude/recording state here is scaffolding for that,
-// currently only ever driven by `isThinking`.
+// Phase 2: text + voice. Records a question -> Apple Speech transcription -> chatCompletion ->
+// synthesizeSpeech -> plays the reply, with the mascot / waveform driven by real mic and
+// playback levels. Ported from the Android app's ChatViewModel (minus preset greeting clips,
+// easter eggs, and the Firestore credit banner, which have no iOS backend support yet).
 //
-// Auth: the shared module's makeChatApiClient wants `() -> String?` returning an
-// already-cached Firebase ID token. We pull it from AuthController, which does Sign in with
-// Apple -> Firebase REST exchange out of band.
+// Auth: makeChatApiClient wants `() -> String?` returning a cached Firebase ID token, pulled
+// from AuthController (Sign in with Apple -> Firebase REST exchange, out of band).
 @MainActor
 final class ChatViewModel: ObservableObject {
+    enum RecordingState { case idle, recording, transcribing }
+
     @Published var dialects: [Dialect] = SharedApi.shared.enabledDialects
     @Published var selectedDialect: Dialect?
     @Published var messages: [ChatMessage] = []
@@ -17,7 +21,14 @@ final class ChatViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var lastError: String?
 
+    @Published private(set) var recordingState: RecordingState = .idle
+    @Published private(set) var isSpeaking: Bool = false
+    @Published private(set) var playbackAmplitude: Double = 0
+    @Published private(set) var recordingAmplitude: Double = 0
+
     private unowned let auth: AuthController
+    private let recorder = VoiceRecorder()
+    private let player = VoicePlayer()
 
     private lazy var apiClient: ChatApiClient = SharedApi.shared.makeChatApiClient(
         idTokenProvider: { [weak self] in self?.auth.currentIdToken }
@@ -26,6 +37,10 @@ final class ChatViewModel: ObservableObject {
     init(auth: AuthController) {
         self.auth = auth
         selectedDialect = dialects.first
+
+        recorder.$amplitude.assign(to: &$recordingAmplitude)
+        player.$amplitude.assign(to: &$playbackAmplitude)
+        player.$isPlaying.assign(to: &$isSpeaking)
     }
 
     /// Most recent question the user asked - the one bit of transcript the voice-only design
@@ -34,45 +49,121 @@ final class ChatViewModel: ObservableObject {
         messages.last(where: { $0.role == MessageRole.user })?.text
     }
 
-    var isThinking: Bool { isLoading }
+    var isThinking: Bool { isLoading || recordingState == .transcribing }
+
+    // MARK: - Mascot tap: interrupt playback, else start/stop listening
+
+    func mascotTapped() {
+        switch true {
+        case isThinking:                    break
+        case isSpeaking:                    player.stop()
+        case recordingState == .recording:  stopRecording()
+        default:                            startRecording()
+        }
+    }
+
+    // MARK: - Recording
+
+    func startRecording() {
+        guard recordingState == .idle else { return }
+        player.stop()
+        Task {
+            guard await ensureMicAndSpeechPermission() else {
+                lastError = "Microphone or speech permission denied"
+                return
+            }
+            do {
+                try recorder.start()
+                recordingState = .recording
+            } catch {
+                lastError = error.localizedDescription
+            }
+        }
+    }
+
+    func stopRecording() {
+        guard recordingState == .recording else { return }
+        let file = recorder.stop()
+        recordingState = .transcribing
+        Task {
+            await transcribeAndSend(file)
+            recordingState = .idle
+        }
+    }
+
+    private func transcribeAndSend(_ file: URL?) async {
+        guard let file else {
+            lastError = "No audio captured"
+            return
+        }
+        do {
+            let transcript = try await SpeechTranscriber.transcribe(fileURL: file)
+            try? FileManager.default.removeItem(at: file)
+            let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { send(text: trimmed) }
+        } catch {
+            lastError = "Couldn't transcribe that"
+        }
+    }
+
+    // MARK: - Send + speak
 
     func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, let dialect = selectedDialect else { return }
+        guard !text.isEmpty else { return }
         inputText = ""
+        send(text: text)
+    }
+
+    private func send(text: String) {
+        guard let dialect = selectedDialect else { return }
 
         messages.append(ChatMessage(
-            id: UUID().uuidString,
-            role: .user,
-            text: text,
-            dialect: dialect.id,
-            audioState: .none,
-            status: .done,
-            errorMessage: nil,
+            id: UUID().uuidString, role: .user, text: text, dialect: dialect.id,
+            audioState: .none, status: .done, errorMessage: nil,
             createdAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
         ))
         isLoading = true
+        lastError = nil
 
         Task {
             await auth.refreshIfNeeded()
             let systemPrompt = SharedApi.shared.buildSystemPrompt(dialect: dialect)
             do {
                 let replyText = try await apiClient.chatCompletion(userText: text, systemPrompt: systemPrompt)
-                self.isLoading = false
-                self.messages.append(ChatMessage(
-                    id: UUID().uuidString,
-                    role: .assistant,
-                    text: replyText,
-                    dialect: dialect.id,
-                    audioState: .none,
-                    status: .done,
-                    errorMessage: nil,
+                messages.append(ChatMessage(
+                    id: UUID().uuidString, role: .assistant, text: replyText, dialect: dialect.id,
+                    audioState: .none, status: .done, errorMessage: nil,
                     createdAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
                 ))
+                isLoading = false
+                await speak(replyText, dialect: dialect)
             } catch {
-                self.isLoading = false
-                self.lastError = error.localizedDescription
+                isLoading = false
+                lastError = error.localizedDescription
             }
         }
+    }
+
+    private func speak(_ text: String, dialect: Dialect) async {
+        do {
+            let result = try await apiClient.synthesizeSpeech(text: text, voiceId: dialect.elevenLabsVoiceId)
+            await withCheckedContinuation { cont in
+                player.play(base64: result.audioBase64) { cont.resume() }
+            }
+        } catch {
+            // Text reply is already on screen; a TTS failure just means no audio this turn.
+            lastError = "Couldn't play the voice reply"
+        }
+    }
+
+    // MARK: - Permissions
+
+    private func ensureMicAndSpeechPermission() async -> Bool {
+        let mic = await withCheckedContinuation { cont in
+            AVAudioSession.sharedInstance().requestRecordPermission { cont.resume(returning: $0) }
+        }
+        guard mic else { return false }
+        return await SpeechTranscriber.requestAuthorization()
     }
 }

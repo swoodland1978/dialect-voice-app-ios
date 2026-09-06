@@ -43,9 +43,23 @@ the Android app's `ui/ChatScreen.kt`. New Swift files: `Theme.swift`, `AnimatedM
 repo into `Assets.xcassets`. `iosApp.entitlements` adds `com.apple.developer.applesignin`.
 
 Builds and runs in the simulator (sign-in screen + chat screen both verified via screenshot;
-`BYPASS_AUTH=1` launch env skips the gate). Audio (mic, TTS playback, real amplitude) is
-phase 2 - the `playbackAmplitude`/`recordingAmplitude` params exist but are only driven by
-`isThinking` for now. Paywall is phase 3 (the "Buy credit" button is a layout placeholder).
+`BYPASS_AUTH=1` launch env skips the gate). Paywall is phase 3 (the "Buy credit" button is a
+layout placeholder).
+
+### Phase 2: voice
+
+`VoiceRecorder.swift` (AVAudioRecorder -> m4a + level metering), `SpeechTranscriber.swift`
+(on-device `SFSpeechRecognizer`, en-GB - the iOS choice; Android uses Whisper),
+`VoicePlayer.swift` (plays `SharedApi.synthesizeSpeech`'s base64 mp3 via AVAudioPlayer +
+metering), `AudioLevel.swift` (dBFS -> 0...1). `ChatViewModel` orchestrates:
+record -> transcribe -> `chatCompletion` -> `synthesizeSpeech` -> play, with the mascot /
+waveform now driven by real `recordingAmplitude` / `playbackAmplitude` and `isSpeaking`. Mic
+button added to the input row; tapping the mascot starts/stops listening or interrupts
+playback. `Info.plist` gained `NSSpeechRecognitionUsageDescription`.
+
+Builds clean, runs without crashing, mic button present. The full voice round-trip can't be
+exercised headless (no simulator mic input; backend calls need the auth config above) - needs
+a device or completed Firebase/Apple setup to verify end to end.
 
 **Sign in with Apple needs console config to actually authenticate** (only the user can do
 this): (1) add an iOS app in the Firebase console for `regional-dialect-ccd37`, bundle id

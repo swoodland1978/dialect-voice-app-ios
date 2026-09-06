@@ -26,14 +26,24 @@ struct ContentView: View {
                 LastQuestionView(text: viewModel.lastQuestion)
 
                 AnimatedMascot(
+                    isSpeaking: viewModel.isSpeaking,
+                    isRecording: viewModel.recordingState == .recording,
                     isBusy: viewModel.isThinking,
                     hasError: viewModel.lastError != nil,
-                    onTap: {}
+                    playbackAmplitude: viewModel.playbackAmplitude,
+                    recordingAmplitude: viewModel.recordingAmplitude,
+                    onTap: viewModel.mascotTapped
                 )
                 .frame(maxHeight: .infinity)
 
-                AudioWaveform(isBusy: viewModel.isThinking)
-                    .padding(.horizontal, 32)
+                AudioWaveform(
+                    isSpeaking: viewModel.isSpeaking,
+                    isRecording: viewModel.recordingState == .recording,
+                    isBusy: viewModel.isThinking,
+                    playbackAmplitude: viewModel.playbackAmplitude,
+                    recordingAmplitude: viewModel.recordingAmplitude
+                )
+                .padding(.horizontal, 32)
 
                 Spacer().frame(height: 6)
 
@@ -80,6 +90,8 @@ struct ContentView: View {
                 .background(Palette.surfaceVariant, in: RoundedRectangle(cornerRadius: 24))
                 .onSubmit(viewModel.send)
 
+            micButton
+
             Button {
                 viewModel.send()
             } label: {
@@ -92,6 +104,29 @@ struct ContentView: View {
             .disabled(!canSend)
         }
         .padding(12)
+    }
+
+    @ViewBuilder
+    private var micButton: some View {
+        let recording = viewModel.recordingState == .recording
+        let transcribing = viewModel.recordingState == .transcribing
+        Button {
+            recording ? viewModel.stopRecording() : viewModel.startRecording()
+        } label: {
+            ZStack {
+                if transcribing {
+                    ProgressView().tint(Palette.onSurfaceVariant)
+                } else {
+                    Image(systemName: recording ? "stop.fill" : "mic.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(recording ? Palette.onPrimary : Palette.onSurfaceVariant)
+                }
+            }
+            .frame(width: 48, height: 48)
+            .background(recording ? Palette.recording : Palette.surfaceVariant, in: Circle())
+        }
+        .disabled(transcribing)
+        .accessibilityLabel(recording ? "Stop recording" : "Record voice message")
     }
 
     private var canSend: Bool {
