@@ -1,9 +1,101 @@
 # Status
 
-Written after a session of unattended work on this Mac, which has **no Xcode installed** -
+## Update 2026-09-06: builds and runs in the iOS Simulator
+
+Xcode is now installed on this Mac (**Xcode 14.0.1** - the last line that runs on macOS 12
+Monterey, the ceiling for this 2015 MacBook Pro). The whole path below now works:
+
+- `./gradlew :shared:jvmTest` - still 10/10.
+- `./gradlew :shared:linkDebugFrameworkIosX64` - **links clean.** The old "actual wall" is
+  gone. Kotlin 2.2.10's Kotlin/Native link step works fine against Xcode 14.0.1 - no Kotlin
+  downgrade needed. (Target is `iosX64`, not `iosSimulatorArm64`: this Mac is Intel.)
+- **The SwiftUI app builds and launches in the iPhone 14 / iOS 16.0 simulator.** The dialect
+  picker populates from the shared module (`enabledDialects` bridges correctly), the chat
+  shell renders. Sending a message hits the auth TODO (no token -> "unauthenticated") - the
+  network path itself is still untested end-to-end, blocked on auth.
+
+Fixes that were needed to get there:
+- `SharedApi.makeChatApiClient` took `suspend () -> String?`. Kotlin/Native exports a suspend
+  *function-type parameter* as a protocol Swift can't satisfy with a closure, so the Swift
+  caller could never call it. Changed to a plain `() -> String?` (caller hands back an
+  already-cached token); `FirebaseCallableClient` keeps its `suspend` provider internally.
+- `ContentView.swift` used the `#Preview` macro (Xcode 15+). Reverted to a `PreviewProvider`.
+- `iosApp/Info.plist` was missing `CFBundleIdentifier`/`CFBundleExecutable`/etc. - Xcode only
+  auto-injects those with `GENERATE_INFOPLIST_FILE=YES`. Added them as `$(...)` build-setting
+  refs.
+
+Tooling notes:
+- **XcodeGen can't be installed on macOS 12 anymore** (Homebrew dropped Monterey bottles;
+  building from source needs Xcode 15.3). Replaced with `iosApp/generate_xcodeproj.rb`, which
+  uses the `xcodeproj` Ruby gem (`gem install --user-install xcodeproj`) to generate
+  `iosApp.xcodeproj` from the same intent as `project.yml`. Keep the two in sync.
+- Build: `cd iosApp && ruby generate_xcodeproj.rb && open iosApp.xcodeproj`, or headless with
+  `xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 14' build`.
+
+### Phase 1 UI (later the same day): visual parity + Sign in with Apple
+
+`ContentView.swift` was a bare text-chat shell; it's now the voice-first screen ported from
+the Android app's `ui/ChatScreen.kt`. New Swift files: `Theme.swift`, `AnimatedMascot.swift`
+(cap logo + 3 pulsing soundwave rings), `AudioWaveform.swift` (32-bar rolling strip),
+`ThinkingIndicator.swift`, `SignInView.swift` (logo + Sign in with Apple), `AuthController.swift`
+(Apple identity token -> Firebase Identity Toolkit REST exchange, no Firebase SDK),
+`FirebaseConfig.swift`, `RootView` in `WhyAIApp.swift`. Logo asset copied from the Android
+repo into `Assets.xcassets`. `iosApp.entitlements` adds `com.apple.developer.applesignin`.
+
+Builds and runs in the simulator (sign-in screen + chat screen both verified via screenshot;
+`BYPASS_AUTH=1` launch env skips the gate). Paywall is phase 3 (the "Buy credit" button is a
+layout placeholder).
+
+### Phase 2: voice
+
+`VoiceRecorder.swift` (AVAudioRecorder -> m4a + level metering), `SpeechTranscriber.swift`
+(on-device `SFSpeechRecognizer`, en-GB - the iOS choice; Android uses Whisper),
+`VoicePlayer.swift` (plays `SharedApi.synthesizeSpeech`'s base64 mp3 via AVAudioPlayer +
+metering), `AudioLevel.swift` (dBFS -> 0...1). `ChatViewModel` orchestrates:
+record -> transcribe -> `chatCompletion` -> `synthesizeSpeech` -> play, with the mascot /
+waveform now driven by real `recordingAmplitude` / `playbackAmplitude` and `isSpeaking`. Mic
+button added to the input row; tapping the mascot starts/stops listening or interrupts
+playback. `Info.plist` gained `NSSpeechRecognitionUsageDescription`.
+
+Builds clean, runs without crashing, mic button present. The full voice round-trip can't be
+exercised headless (no simulator mic input; backend calls need the auth config above) - needs
+a device or completed Firebase/Apple setup to verify end to end.
+
+### Phase 2b: preset greeting audio + dev sign-in
+
+- `PresetAudio.swift` + `iosApp/iosApp/PresetAudio/*.mp3` (welcome / switch / goodbye clips
+  for the 5 enabled dialects, copied from the Android `res/raw/`). `VoicePlayer.playBundle`
+  plays them. `ChatViewModel`: welcome on launch, "you're listening to X now" on accent
+  switch (via `selectDialect`), goodbye before sign-out. Selected dialect persists in
+  `UserDefaults`. Not ported: the noCredit/easter-egg/random-egg clips (tied to the
+  credit/paywall system).
+- `AuthController.signInWithEmail` + a "Dev sign-in" disclosure on `SignInView`: email/
+  password against a Firebase test user via Identity Toolkit REST (`signInWithPassword`).
+  Needs no Apple Developer Program or provider config - just the Web API key in
+  `FirebaseConfig.devApiKey` (currently empty) and Email/Password enabled in Firebase. This
+  is the quick path to a real ID token for testing the AI + ElevenLabs backend on the sim.
+
+### Backend gap: iOS in-app purchase
+
+`functions/verifyPurchase.ts` only validates Google Play tokens (Android Publisher API).
+There is no App Store verification path, so an iOS purchase can't grant credit. Phase 3
+needs a new `verifyAppStorePurchase` Cloud Function + an App Store Connect product.
+
+**Sign in with Apple needs console config to actually authenticate** (only the user can do
+this): (1) add an iOS app in the Firebase console for `regional-dialect-ccd37`, bundle id
+`com.dialect.voice.ios`, download `GoogleService-Info.plist` into `iosApp/iosApp/`;
+(2) enable the Apple auth provider in Firebase; (3) configure Sign in with Apple in the Apple
+Developer account (needs paid Program membership). Until then the Apple step completes but no
+Firebase token is issued - use "Continue without signing in" on the sign-in screen.
+
+Everything from here down is the original pre-Xcode status, kept for context.
+
+---
+
+Written after a session of unattended work on this Mac, which had **no Xcode installed** -
 only Xcode Command Line Tools (`xcode-select -p` -> `/Library/Developer/CommandLineTools`,
-`xcrun --sdk iphoneos --show-sdk-path` fails, `xcodebuild -version` fails). That's a hard
-ceiling on how "finished" anything iOS-shaped can be from here. This file says exactly what
+`xcrun --sdk iphoneos --show-sdk-path` fails, `xcodebuild -version` fails). That was a hard
+ceiling on how "finished" anything iOS-shaped could be from there. This file says exactly what
 that ceiling let through, verified for real, versus what's written but unconfirmed.
 
 **Also worth knowing before installing Xcode here or anywhere:** this machine has ~1.9GB of
@@ -66,13 +158,12 @@ holder" lesson from the Android side's history, pinned by a regression test
 
 ## Next steps, in order
 
-1. Get this onto a Mac with real Xcode (and enough free disk space - see above).
-2. `brew install xcodegen && cd iosApp && xcodegen generate && open iosApp.xcodeproj`.
-3. Build. The first real compiler errors will be in `iosApp/` Swift files (see "unverified"
-   above) - expect to fix `Shared`-facing call shapes against the real generated header.
-4. Decide and wire up the auth path (see "Auth is a deliberate TODO" above) - this blocks
-   `ChatApiClient` actually working end-to-end, everything else is ready to receive a real
-   token.
-5. Only after that: the actual UI work (mascot/waveform, matching the Android app's current
+Steps 1-3 (get on a Mac with Xcode, generate the project, fix the first Swift build errors)
+are **done** - see the 2026-09-06 update at the top. Remaining:
+
+1. Wire up the auth path: **Sign in with Apple -> Firebase ID token** fed to
+   `SharedApi.makeChatApiClient`'s `() -> String?` provider (return a cached token). This
+   blocks every server call - everything else is ready to receive a real token.
+2. Only after that: the actual UI work (mascot/waveform, matching the Android app's current
    voice-only redesign) - not started here at all; `ContentView.swift` is a bare functional
    shell, not a design pass.
